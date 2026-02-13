@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sparkles, Send } from "lucide-react";
+import Orb from "./Orb";
 
 interface Message {
   id: string;
@@ -16,7 +17,7 @@ const AIAssistant = () => {
     {
       id: "1",
       role: "assistant",
-      content: "Hello! I'm your AI assistant for AeroSense command operations. I can help with mission planning, order optimization, route suggestions, and operational decisions. How can I assist you today?",
+      content: "",
       timestamp: new Date(),
     },
   ]);
@@ -91,12 +92,16 @@ const AIAssistant = () => {
   };
 
   return (
-    <div className="w-80 flex flex-col h-full">
-      <div className="flex items-center gap-3 px-4 h-14 border-b border-border">
-        <Sparkles className="h-5 w-5 text-primary" />
-        <span className="font-semibold text-foreground tracking-wide text-sm">
-          AI Assistant
-        </span>
+    <div className="w-80 flex flex-col h-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="h-48 relative w-full border-b border-border overflow-hidden group">
+        <Orb className="absolute inset-0 transition-opacity duration-1000" />
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 pointer-events-none">
+          <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+          <span className="font-mono text-xs font-medium text-foreground/80 tracking-wider bg-background/40 backdrop-blur-md px-2 py-1 rounded-full border border-border/50 shadow-sm">
+            AI ACTIVE
+          </span>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background to-transparent" />
       </div>
 
       <ScrollArea className="flex-1 p-4">
