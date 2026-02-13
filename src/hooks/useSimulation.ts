@@ -69,6 +69,44 @@ const initialOrders: Order[] = [
   { id: "ORD-4826", packageType: "Spare Parts", weight: "4.0 kg", pickup: "Factory I", delivery: "Maintenance Bay J", status: "Pending" },
 ];
 
+/**
+ * Generate an aerial (straight-line) route between two coordinates.
+ * Produces intermediate waypoints along the great-circle path so the
+ * route renders as a smooth line on the map.
+ */
+function generateAerialRoute(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+  numPoints = 50
+): [number, number][] {
+  const points: [number, number][] = [];
+  for (let i = 0; i <= numPoints; i++) {
+    const t = i / numPoints;
+    const lng = from.lng + (to.lng - from.lng) * t;
+    const lat = from.lat + (to.lat - from.lat) * t;
+    points.push([lng, lat]);
+  }
+  return points;
+}
+
+/**
+ * Haversine distance between two points in km.
+ */
+function haversineDistance(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number }
+): number {
+  const R = 6371; // Earth radius in km
+  const dLat = ((to.lat - from.lat) * Math.PI) / 180;
+  const dLng = ((to.lng - from.lng) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((from.lat * Math.PI) / 180) *
+      Math.cos((to.lat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export function useSimulation() {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [aircraft, setAircraft] = useState<AircraftState>(initialAircraft);
@@ -102,69 +140,34 @@ export function useSimulation() {
       const deliveryCoord = locationCoordinates[order.delivery];
       if (!pickupCoord || !deliveryCoord) return;
 
-      // Fetch route from Mapbox Directions API
-      const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${pickupCoord.lng},${pickupCoord.lat};${deliveryCoord.lng},${deliveryCoord.lat}?geometries=geojson&access_token=${import.meta.env.VITE_MAPBOX_ACCESS_TOKEN}`;
+      // Generate aerial (straight-line) route for drone flight
+      const coordinates = generateAerialRoute(pickupCoord, deliveryCoord);
+      const distance = haversineDistance(pickupCoord, deliveryCoord);
+      const droneSpeed = 42; // km/h
+      const totalEta = Math.round((distance / droneSpeed) * 3600); // seconds
 
-      try {
-        const response = await fetch(directionsUrl);
-        const data = await response.json();
-        const route = data.routes[0];
-        const coordinates: [number, number][] = route.geometry.coordinates;
-        const distance = route.distance / 1000; // meters to km
-        const totalEta = Math.round((distance / 42) * 60); // minutes at ~42 km/h
+      const weight = parseFloat(order.weight) || 2.0;
 
-        const weight = parseFloat(order.weight) || 2.0;
-
-        setActiveMissionOrderId(orderId);
-        setOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, status: "In Flight" as const } : o))
-        );
-        setAircraft((prev) => ({
-          ...prev,
-          status: "In Flight",
-          payloadWeight: weight,
-          speed: 42,
-        }));
-        setMission({
-          progress: 0,
-          elapsed: 0,
-          eta: totalEta * 60,
-          distance,
-          altitude: 150,
-          speed: 42,
-          routeProgress: 0,
-          route: coordinates,
-        });
-      } catch (error) {
-        console.error("Failed to fetch route:", error);
-        // Fallback to straight line
-        const coordinates: [number, number][] = [[pickupCoord.lng, pickupCoord.lat], [deliveryCoord.lng, deliveryCoord.lat]];
-        const distance = 10; // fallback
-        const totalEta = Math.round((distance / 42) * 60);
-
-        const weight = parseFloat(order.weight) || 2.0;
-
-        setActiveMissionOrderId(orderId);
-        setOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, status: "In Flight" as const } : o))
-        );
-        setAircraft((prev) => ({
-          ...prev,
-          status: "In Flight",
-          payloadWeight: weight,
-          speed: 42,
-        }));
-        setMission({
-          progress: 0,
-          elapsed: 0,
-          eta: totalEta * 60,
-          distance,
-          altitude: 150,
-          speed: 42,
-          routeProgress: 0,
-          route: coordinates,
-        });
-      }
+      setActiveMissionOrderId(orderId);
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: "In Flight" as const } : o))
+      );
+      setAircraft((prev) => ({
+        ...prev,
+        status: "In Flight",
+        payloadWeight: weight,
+        speed: droneSpeed,
+      }));
+      setMission({
+        progress: 0,
+        elapsed: 0,
+        eta: totalEta,
+        distance,
+        altitude: 150,
+        speed: droneSpeed,
+        routeProgress: 0,
+        route: coordinates,
+      });
     },
     [orders, activeMissionOrderId]
   );
