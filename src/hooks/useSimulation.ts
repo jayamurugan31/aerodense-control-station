@@ -93,7 +93,7 @@ export function useSimulation() {
     setOrders((prev) => [...prev, order]);
   }, []);
   const startMission = useCallback(
-    async (orderId: string) => {
+    (orderId: string) => {
       const order = orders.find((o) => o.id === orderId);
       if (!order || order.status !== "Approved") return;
       if (activeMissionOrderId) return; // already flying
@@ -102,69 +102,43 @@ export function useSimulation() {
       const deliveryCoord = locationCoordinates[order.delivery];
       if (!pickupCoord || !deliveryCoord) return;
 
-      // Fetch route from Mapbox Directions API
-      const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${pickupCoord.lng},${pickupCoord.lat};${deliveryCoord.lng},${deliveryCoord.lat}?geometries=geojson&access_token=${import.meta.env.VITE_MAPBOX_ACCESS_TOKEN}`;
+      // Generate aerial (straight-line) route with interpolated waypoints
+      const coordinates = generateAerialRoute(
+        [pickupCoord.lng, pickupCoord.lat],
+        [deliveryCoord.lng, deliveryCoord.lat],
+        20 // number of waypoints for smooth animation
+      );
 
-      try {
-        const response = await fetch(directionsUrl);
-        const data = await response.json();
-        const route = data.routes[0];
-        const coordinates: [number, number][] = route.geometry.coordinates;
-        const distance = route.distance / 1000; // meters to km
-        const totalEta = Math.round((distance / 42) * 60); // minutes at ~42 km/h
+      // Haversine distance for aerial route
+      const distance = haversineDistance(
+        pickupCoord.lat, pickupCoord.lng,
+        deliveryCoord.lat, deliveryCoord.lng
+      );
+      const droneSpeed = 42; // km/h
+      const totalEta = Math.round((distance / droneSpeed) * 3600); // seconds
 
-        const weight = parseFloat(order.weight) || 2.0;
+      const weight = parseFloat(order.weight) || 2.0;
 
-        setActiveMissionOrderId(orderId);
-        setOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, status: "In Flight" as const } : o))
-        );
-        setAircraft((prev) => ({
-          ...prev,
-          status: "In Flight",
-          payloadWeight: weight,
-          speed: 42,
-        }));
-        setMission({
-          progress: 0,
-          elapsed: 0,
-          eta: totalEta * 60,
-          distance,
-          altitude: 150,
-          speed: 42,
-          routeProgress: 0,
-          route: coordinates,
-        });
-      } catch (error) {
-        console.error("Failed to fetch route:", error);
-        // Fallback to straight line
-        const coordinates: [number, number][] = [[pickupCoord.lng, pickupCoord.lat], [deliveryCoord.lng, deliveryCoord.lat]];
-        const distance = 10; // fallback
-        const totalEta = Math.round((distance / 42) * 60);
-
-        const weight = parseFloat(order.weight) || 2.0;
-
-        setActiveMissionOrderId(orderId);
-        setOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, status: "In Flight" as const } : o))
-        );
-        setAircraft((prev) => ({
-          ...prev,
-          status: "In Flight",
-          payloadWeight: weight,
-          speed: 42,
-        }));
-        setMission({
-          progress: 0,
-          elapsed: 0,
-          eta: totalEta * 60,
-          distance,
-          altitude: 150,
-          speed: 42,
-          routeProgress: 0,
-          route: coordinates,
-        });
-      }
+      setActiveMissionOrderId(orderId);
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: "In Flight" as const } : o))
+      );
+      setAircraft((prev) => ({
+        ...prev,
+        status: "In Flight",
+        payloadWeight: weight,
+        speed: droneSpeed,
+      }));
+      setMission({
+        progress: 0,
+        elapsed: 0,
+        eta: totalEta,
+        distance,
+        altitude: 150,
+        speed: droneSpeed,
+        routeProgress: 0,
+        route: coordinates,
+      });
     },
     [orders, activeMissionOrderId]
   );
@@ -234,4 +208,35 @@ export function useSimulation() {
     startMission,
     addOrder,
   };
+}
+
+/** Haversine formula — returns distance in km between two lat/lng points */
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Earth radius in km
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Generate an aerial (straight-line) route between two points with
+ * evenly interpolated waypoints for smooth drone animation on the map.
+ */
+function generateAerialRoute(
+  start: [number, number],
+  end: [number, number],
+  numPoints: number
+): [number, number][] {
+  const route: [number, number][] = [];
+  for (let i = 0; i <= numPoints; i++) {
+    const t = i / numPoints;
+    const lng = start[0] + (end[0] - start[0]) * t;
+    const lat = start[1] + (end[1] - start[1]) * t;
+    route.push([lng, lat]);
+  }
+  return route;
 }

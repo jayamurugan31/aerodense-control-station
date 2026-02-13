@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import Map, { Marker } from "@mapbox/react-map-gl";
-import mapboxgl from "mapbox-gl";
+import Map, { Marker } from "react-map-gl";
+import type mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { MissionState } from "@/hooks/useSimulation";
 import type { Order } from "@/components/OrdersPanel";
